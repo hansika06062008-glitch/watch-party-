@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Watch Party</title>
+  <meta name="description" content="Watch videos together in sync, with chat, reactions, polls and snacks.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Nunito:wght@400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="confetti" class="confetti" aria-hidden="true"></div>
+
+  <!-- ============ LANDING ============ -->
+  <main id="landing" class="landing">
+    <header class="hero">
+      <div class="bulbs sign">
+        <h1 class="sign-text">Watch<br>Party</h1>
+      </div>
+      <p class="lede">Grab your snacks, paste a link, and watch together. Everyone stays in sync, wherever they are.</p>
+    </header>
+
+    <div class="doors">
+      <form id="createForm" class="door door-create" autocomplete="off">
+        <h2>Start a party</h2>
+        <label>Your name<input name="name" required maxlength="24" placeholder="e.g. Anamika"></label>
+        <label>Room name<input name="roomName" maxlength="40" placeholder="Friday movie night"></label>
+        <label>Password <span class="opt">(optional)</span>
+          <input name="password" type="password" minlength="4" maxlength="64" placeholder="Leave empty for an open room" autocomplete="new-password">
+        </label>
+        <label>Who controls play and pause?
+          <select name="controlMode">
+            <option value="host">Only me (the host)</option>
+            <option value="all">Everyone in the room</option>
+          </select>
+        </label>
+        <p class="form-error" role="alert"></p>
+        <button class="btn btn-pink" type="submit">Create room</button>
+      </form>
+
+      <form id="joinForm" class="door door-join" autocomplete="off">
+        <h2>Join a party</h2>
+        <label>Your name<input name="name" required maxlength="24" placeholder="e.g. Rahul"></label>
+        <label>Room code<input id="joinCode" name="code" required maxlength="6" placeholder="6 letters, like K7QX2M" class="code-input" autocapitalize="characters" spellcheck="false"></label>
+        <p id="roomPeek" class="peek" aria-live="polite"></p>
+        <label id="joinPwWrap" hidden>🔒 Room password
+          <input id="joinPw" name="password" type="password" maxlength="64" autocomplete="current-password">
+        </label>
+        <p class="form-error" role="alert"></p>
+        <button class="btn btn-aqua" type="submit">Join room</button>
+      </form>
+    </div>
+  </main>
+
+  <!-- ============ ROOM ============ -->
+  <main id="room" class="room" hidden>
+    <header class="topbar">
+      <span class="brand">Watch Party</span>
+      <div class="room-meta">
+        <h2 id="roomName" class="room-name"></h2>
+        <button id="copyCode" class="chip" title="Copy room code"><span id="roomCode"></span></button>
+        <span id="lockBadge" class="lock" hidden title="This room needs a password">🔒 Locked</span>
+        <button id="copyLink" class="btn btn-ghost btn-sm">Copy invite link</button>
+      </div>
+      <div class="net" title="RTT: round trip to server. Drift: how far your video is from the room. p95: 95th percentile time for others' play/pause to reach you.">
+        <span id="netDot" class="dot"></span>
+        <span id="netText">Connecting…</span>
+        <span id="statRtt" class="stat"></span>
+        <span id="statDrift" class="stat"></span>
+        <span id="statP95" class="stat"></span>
+      </div>
+      <button id="leaveBtn" class="btn btn-ghost btn-sm">Leave</button>
+    </header>
+
+    <div class="layout">
+      <section class="stage" id="stage" aria-label="Video">
+        <div class="bulbs frame" id="frame">
+          <div class="screen" id="screen">
+            <video id="video" playsinline preload="auto" hidden></video>
+            <div id="ytWrap" class="yt"></div>
+            <div id="emptyScreen" class="empty-screen">
+              <p class="empty-big">🎬</p>
+              <p>Paste a video link below, or pick a free film in Discover.</p>
+            </div>
+            <div id="reactLayer" class="fx-layer" aria-hidden="true"></div>
+            <div id="snackLayer" class="fx-layer" aria-hidden="true"></div>
+            <button id="unlock" class="unlock" hidden>Tap to join the show 🎉</button>
+            <div id="breakOverlay" class="break" hidden>
+              <p class="break-title">🍿 Snack break</p>
+              <p id="breakTimer" class="break-timer">2:00</p>
+              <p id="breakBy" class="break-by"></p>
+              <button id="endBreak" class="btn btn-pink btn-sm" data-control-only>Resume now</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button id="playBtn" class="ctl ctl-play" aria-label="Play">▶</button>
+          <span id="timeCur" class="time">0:00</span>
+          <input id="seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek">
+          <span id="timeDur" class="time">0:00</span>
+          <button id="muteBtn" class="ctl" aria-label="Mute">🔊</button>
+          <input id="vol" type="range" min="0" max="1" step="0.05" value="1" aria-label="Volume" class="vol">
+          <select id="rateSel" aria-label="Playback speed" class="rate">
+            <option value="0.75">0.75×</option><option value="1" selected>1×</option>
+            <option value="1.25">1.25×</option><option value="1.5">1.5×</option>
+          </select>
+          <button id="fsBtn" class="ctl" aria-label="Full screen">⛶</button>
+        </div>
+        <p id="nowPlaying" class="now-playing"></p>
+        <p id="controlNote" class="control-note"></p>
+
+        <form id="linkForm" class="linkbar">
+          <input id="linkInput" type="url" required placeholder="Paste a YouTube, .mp4, .webm or .m3u8 link" aria-label="Video link">
+          <input id="linkTitle" maxlength="80" placeholder="Title (optional)" aria-label="Video title">
+          <button class="btn btn-pink" type="submit" data-control-only>Play now</button>
+          <button class="btn btn-ghost" type="button" id="queueBtn">Add to playlist</button>
+        </form>
+
+        <div class="reactbar" id="reactBar" aria-label="Send a reaction"></div>
+      </section>
+
+      <aside class="side">
+        <nav class="tabs" role="tablist">
+          <button role="tab" data-tab="chat" aria-selected="true">Chat <span id="chatBadge" class="badge" hidden></span></button>
+          <button role="tab" data-tab="snacks" aria-selected="false">Snacks</button>
+          <button role="tab" data-tab="playlist" aria-selected="false">Playlist <span id="plCount" class="count"></span></button>
+          <button role="tab" data-tab="discover" aria-selected="false">Discover</button>
+          <button role="tab" data-tab="polls" aria-selected="false">Polls</button>
+          <button role="tab" data-tab="people" aria-selected="false">People <span id="peopleCount" class="count"></span></button>
+        </nav>
+
+        <section class="panel" data-panel="chat" role="tabpanel">
+          <ul id="chatList" class="chat-list"></ul>
+          <form id="chatForm" class="chat-form">
+            <input id="chatInput" maxlength="500" placeholder="Say something…" aria-label="Chat message" autocomplete="off">
+            <button class="btn btn-pink btn-sm" type="submit">Send</button>
+          </form>
+        </section>
+
+        <section class="panel" data-panel="snacks" role="tabpanel" hidden>
+          <h3>Pass a snack</h3>
+          <label class="inline">To
+            <select id="snackTo"></select>
+          </label>
+          <div id="snackGrid" class="snack-grid"></div>
+          <div class="snack-break" data-control-only>
+            <h3>Snack break</h3>
+            <p class="hint">Pauses the video for everyone and shows a countdown. It resumes on its own.</p>
+            <div class="row">
+              <select id="breakMin" aria-label="Break length">
+                <option value="1">1 minute</option><option value="2" selected>2 minutes</option>
+                <option value="5">5 minutes</option><option value="10">10 minutes</option>
+              </select>
+              <button id="breakBtn" class="btn btn-sun btn-sm">Call snack break</button>
+            </div>
+          </div>
+          <h3>Most generous</h3>
+          <ol id="snackBoard" class="snack-board"></ol>
+          <h3>Snack log</h3>
+          <ul id="snackFeed" class="snack-feed"><li class="empty">No snacks passed yet. Be the first!</li></ul>
+        </section>
+
+        <section class="panel" data-panel="playlist" role="tabpanel" hidden>
+          <h3>Up next</h3>
+          <p class="hint">Anyone can add. The next video plays on its own when the current one ends.</p>
+          <ol id="playlist" class="playlist"></ol>
+        </section>
+
+        <section class="panel" data-panel="discover" role="tabpanel" hidden>
+          <input id="search" type="search" placeholder="Search films, genres, moods (typos are fine)" aria-label="Search films">
+          <div id="genreChips" class="chips" aria-label="Genres"></div>
+          <div class="filters">
+            <select id="fDecade" aria-label="Decade"><option value="">Any decade</option></select>
+            <select id="fMood" aria-label="Mood"><option value="">Any mood</option></select>
+            <select id="fSort" aria-label="Sort">
+              <option value="match">Best match</option><option value="new">Newest</option>
+              <option value="old">Oldest</option><option value="az">A to Z</option>
+            </select>
+            <label class="check"><input id="fPlayable" type="checkbox"> Plays here</label>
+          </div>
+          <h3 id="recTitle">Picked for this room</h3>
+          <p id="recWhy" class="hint"></p>
+          <ul id="recList" class="films"></ul>
+          <h3 id="resTitle">All films</h3>
+          <ul id="filmList" class="films"></ul>
+        </section>
+
+        <section class="panel" data-panel="polls" role="tabpanel" hidden>
+          <form id="pollForm" class="poll-form">
+            <h3>Start a poll</h3>
+            <input id="pollQ" maxlength="120" placeholder="What should we watch next?" aria-label="Poll question">
+            <textarea id="pollOpts" rows="4" placeholder="One option per line (2 to 6)" aria-label="Poll options"></textarea>
+            <button class="btn btn-sun btn-sm" type="submit">Start poll</button>
+          </form>
+          <ul id="pollList" class="poll-list"></ul>
+        </section>
+
+        <section class="panel" data-panel="people" role="tabpanel" hidden>
+          <div class="host-settings" data-host-only>
+            <label>Who controls play and pause?
+              <select id="controlMode">
+                <option value="host">Only the host</option>
+                <option value="all">Everyone</option>
+              </select>
+            </label>
+          </div>
+          <ul id="peopleList" class="people"></ul>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
+  <script src="/catalog.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
